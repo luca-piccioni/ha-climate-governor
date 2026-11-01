@@ -149,6 +149,20 @@ SEASON_MULTIPLIERS: dict[str, dict[str, float]] = {
     },
 }
 
+# --- Numeric bounds (min, max, step, unit) --------------------------------------
+# Single source of truth shared by the options flow and the configuration panel,
+# so the two never drift on what values are accepted.
+PRESET_HEAT_BOUNDS: tuple[float, float, float, str | None] = (5.0, 40.0, 0.5, "°C")
+PRESET_COOL_BOUNDS: tuple[float, float, float, str | None] = (10.0, 45.0, 0.5, "°C")
+TUNING_BOUNDS: dict[str, tuple[float, float, float, str | None]] = {
+    CONF_TOLERANCE: (0.1, 3.0, 0.1, "°C"),
+    CONF_KP: (0.0, 200.0, 1.0, None),
+    CONF_KI: (0.0, 100.0, 0.5, None),
+    CONF_MAX_OFFSET: (0.0, 5.0, 0.1, "°C"),
+    CONF_CYCLE_WINDOW: (120.0, 7200.0, 30.0, "s"),
+}
+TUNING_KEYS: tuple[str, ...] = tuple(TUNING_BOUNDS)
+
 # --- Repair issue keys ----------------------------------------------------------
 ISSUE_NO_OUTDOOR_SOURCE = "no_outdoor_source"
 ISSUE_ACTUATOR_CAPABILITY_MISMATCH = "actuator_capability_mismatch"

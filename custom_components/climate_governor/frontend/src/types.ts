@@ -96,6 +96,34 @@ export interface FloorInfo {
   name: string;
 }
 
+// [min, max, step, unit|null] — mirrors TUNING_BOUNDS / PRESET_*_BOUNDS in
+// const.py so the panel enforces exactly what the options flow accepts.
+export type Bounds = [number, number, number, string | null];
+
+export interface Limits {
+  preset_heat: Bounds;
+  preset_cool: Bounds;
+  tuning: Record<string, Bounds>;
+}
+
+export interface PresetSetpoints {
+  heat?: number;
+  cool?: number;
+}
+
+export interface IssueInfo {
+  issue_id: string;
+  translation_key: string | null;
+  severity: string | null;
+  is_fixable: boolean;
+  translation_placeholders: Record<string, unknown> | null;
+}
+
+export interface DiagnosticsPayload {
+  diagnostics: Record<string, unknown> | null;
+  issues: IssueInfo[];
+}
+
 export interface OverviewPayload {
   entry: {
     entry_id: string;
@@ -113,6 +141,10 @@ export interface OverviewPayload {
   master_heat?: boolean;
   master_cool?: boolean;
   temperature_unit?: string;
+  preset_keys?: string[];
+  limits?: Limits;
+  season_options?: string[];
+  tuning?: Record<string, number>;
   zones: ZoneInfo[];
   periods: PeriodInfo[];
 }

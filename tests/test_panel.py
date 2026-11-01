@@ -80,6 +80,129 @@ async def test_overview_command(
     )
 
 
+async def test_overview_includes_limits_and_tuning(
+    hass: HomeAssistant,
+    loaded_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """The overview carries the numeric bounds + effective tuning the panel edits."""
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id({"type": "climate_governor/overview"})
+    response = await client.receive_json()
+    payload = response["result"]
+
+    # Static bounds mirror const.py so the panel enforces what the flow accepts.
+    assert payload["preset_keys"]
+    assert payload["limits"]["preset_heat"] == [5.0, 40.0, 0.5, "°C"]
+    assert payload["limits"]["tuning"]["kp"] == [0.0, 200.0, 1.0, None]
+    assert payload["season_options"] == ["heating", "shoulder", "cooling"]
+
+    # Effective global tuning values (from parsed options/defaults).
+    assert payload["tuning"]["kp"] == 40.0
+    assert payload["tuning"]["tolerance"] == 0.3
+
+    # Effective presets/season/default (parsed + defaulted), not the raw
+    # entry.options which omits unset keys.
+    assert payload["presets"]["comfort"]["heat"] == 21.0
+    assert payload["season"] == "heating"
+    assert payload["default_preset"] == "comfort"
+
+
+async def test_update_options_command(
+    hass: HomeAssistant,
+    loaded_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """The update_options command writes presets/season/tuning, clamping bounds."""
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {
+            "type": "climate_governor/update_options",
+            "entry_id": loaded_entry.entry_id,
+            "presets": {
+                "comfort": {"heat": 22.0, "cool": 26.0},
+                # Out-of-range heat must clamp to the max (40.0).
+                "boost": {"heat": 100.0},
+            },
+            "default_preset": "eco",
+            "season": "cooling",
+            # cycle_window coerces to int; tolerance clamps to max (3.0).
+            "tuning": {"kp": 50.0, "cycle_window": 1200.0, "tolerance": 10.0},
+        }
+    )
+    response = await client.receive_json()
+    assert response["success"] is True
+    options = response["result"]["options"]
+
+    assert options["presets"]["comfort"] == {"heat": 22.0, "cool": 26.0}
+    assert options["presets"]["boost"]["heat"] == 40.0
+    assert options["default_preset"] == "eco"
+    assert options["season"] == "cooling"
+    assert options["kp"] == 50.0
+    assert options["cycle_window"] == 1200
+    assert isinstance(options["cycle_window"], int)
+    assert options["tolerance"] == 3.0
+
+    # The update listener reloads the entry; options persist on the entry.
+    await hass.async_block_till_done()
+    assert loaded_entry.options["presets"]["comfort"]["heat"] == 22.0
+    assert loaded_entry.state is not None
+
+
+async def test_update_options_command_unknown_entry(
+    hass: HomeAssistant,
+    loaded_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """An unknown entry id is rejected."""
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {
+            "type": "climate_governor/update_options",
+            "entry_id": "does-not-exist",
+            "season": "cooling",
+        }
+    )
+    response = await client.receive_json()
+    assert response["success"] is False
+    assert response["error"]["code"] == "not_found"
+
+
+async def test_diagnostics_command(
+    hass: HomeAssistant,
+    loaded_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """The diagnostics command returns the entry diagnostics plus open issues."""
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id({"type": "climate_governor/diagnostics"})
+    response = await client.receive_json()
+    assert response["success"] is True
+    result = response["result"]
+
+    assert isinstance(result["issues"], list)
+    diag = result["diagnostics"]
+    assert diag is not None
+    assert diag["config"]["name"] == "Test Plant"
+    assert "Living" in {z["name"] for z in diag["zones"].values()}
+
+
+async def test_diagnostics_command_no_entry(
+    hass: HomeAssistant,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """With no entry the diagnostics command returns null diagnostics."""
+    assert await async_setup_component(hass, DOMAIN, {})
+    await hass.async_block_till_done()
+
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id({"type": "climate_governor/diagnostics"})
+    response = await client.receive_json()
+    assert response["success"] is True
+    assert response["result"]["diagnostics"] is None
+    assert response["result"]["issues"] == []
+
+
 async def test_overview_command_no_entry(
     hass: HomeAssistant,
     hass_ws_client: WebSocketGenerator,

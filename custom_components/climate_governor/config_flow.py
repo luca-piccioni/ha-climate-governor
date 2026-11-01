@@ -66,13 +66,16 @@ from .const import (
     DEFAULT_SEASON,
     DEFAULT_TOLERANCE,
     DOMAIN,
+    PRESET_COOL_BOUNDS,
     PRESET_COOL_KEY,
+    PRESET_HEAT_BOUNDS,
     PRESET_HEAT_KEY,
     SEASON_COOLING,
     SEASON_HEATING,
     SEASON_SHOULDER,
     SUBENTRY_TYPE_PERIOD,
     SUBENTRY_TYPE_ZONE,
+    TUNING_BOUNDS,
 )
 from .models import parse_period_subentry
 
@@ -104,6 +107,19 @@ def _number(
     return selector.NumberSelector(config)
 
 
+def _tuning_number(key: str) -> probatio.All:
+    """Build a validated number field for a tuning key from the shared bounds."""
+    minimum, maximum, step, unit = TUNING_BOUNDS[key]
+    coerce = (
+        probatio.Coerce(int) if key == CONF_CYCLE_WINDOW else probatio.Coerce(float)
+    )
+    return probatio.All(_number(minimum, maximum, step, unit), coerce)
+
+
+def _preset_number(bounds: tuple[float, float, float, str | None]) -> probatio.All:
+    return probatio.All(_number(*bounds), probatio.Coerce(float))
+
+
 SYSTEM_SCHEMA = probatio.Schema(
     {
         probatio.Required(CONF_NAME, default="Climate Governor"):
@@ -122,21 +138,14 @@ SYSTEM_SCHEMA = probatio.Schema(
 
 CONTROL_SCHEMA = probatio.Schema(
     {
-        probatio.Optional(CONF_TOLERANCE, default=DEFAULT_TOLERANCE): probatio.All(
-            _number(0.1, 3.0, 0.1, "°C"), probatio.Coerce(float)
-        ),
-        probatio.Optional(CONF_KP, default=DEFAULT_KP): probatio.All(
-            _number(0, 200, 1), probatio.Coerce(float)
-        ),
-        probatio.Optional(CONF_KI, default=DEFAULT_KI): probatio.All(
-            _number(0, 100, 0.5), probatio.Coerce(float)
-        ),
-        probatio.Optional(CONF_MAX_OFFSET, default=DEFAULT_MAX_OFFSET): probatio.All(
-            _number(0, 5, 0.1, "°C"), probatio.Coerce(float)
-        ),
-        probatio.Optional(
-            CONF_CYCLE_WINDOW, default=DEFAULT_CYCLE_WINDOW
-        ): probatio.All(_number(120, 7200, 30, "s"), probatio.Coerce(int)),
+        probatio.Optional(key, default=default): _tuning_number(key)
+        for key, default in (
+            (CONF_TOLERANCE, DEFAULT_TOLERANCE),
+            (CONF_KP, DEFAULT_KP),
+            (CONF_KI, DEFAULT_KI),
+            (CONF_MAX_OFFSET, DEFAULT_MAX_OFFSET),
+            (CONF_CYCLE_WINDOW, DEFAULT_CYCLE_WINDOW),
+        )
     }
 )
 
@@ -443,11 +452,11 @@ class GovernorOptionsFlow(OptionsFlow):
         for preset in DEFAULT_PRESETS:
             heat_key = f"{preset}_{PRESET_HEAT_KEY}"
             cool_key = f"{preset}_{PRESET_COOL_KEY}"
-            schema_dict[probatio.Optional(heat_key)] = probatio.All(
-                _number(5, 40, 0.5, "°C"), probatio.Coerce(float)
+            schema_dict[probatio.Optional(heat_key)] = _preset_number(
+                PRESET_HEAT_BOUNDS
             )
-            schema_dict[probatio.Optional(cool_key)] = probatio.All(
-                _number(10, 45, 0.5, "°C"), probatio.Coerce(float)
+            schema_dict[probatio.Optional(cool_key)] = _preset_number(
+                PRESET_COOL_BOUNDS
             )
             suggested[heat_key] = current.get(preset, {}).get(PRESET_HEAT_KEY)
             suggested[cool_key] = current.get(preset, {}).get(PRESET_COOL_KEY)
@@ -475,23 +484,10 @@ class GovernorOptionsFlow(OptionsFlow):
             return self.async_abort(reason="reconfigure_successful")
 
         options = self.config_entry.options
-        schema_dict = {}
-        for key, (minimum, maximum, step, unit) in {
-            CONF_TOLERANCE: (0.1, 3.0, 0.1, "°C"),
-            CONF_KP: (0, 200, 1, None),
-            CONF_KI: (0, 100, 0.5, None),
-            CONF_MAX_OFFSET: (0, 5, 0.1, "°C"),
-            CONF_CYCLE_WINDOW: (120, 7200, 30, "s"),
-        }.items():
-            coerce = (
-                probatio.Coerce(int)
-                if key == CONF_CYCLE_WINDOW
-                else probatio.Coerce(float)
-            )
-            schema_entry = probatio.Optional(key, default=options.get(key))
-            schema_dict[schema_entry] = probatio.All(
-                _number(minimum, maximum, step, unit), coerce
-            )
+        schema_dict = {
+            probatio.Optional(key, default=options.get(key)): _tuning_number(key)
+            for key in TUNING_BOUNDS
+        }
         return self.async_show_form(
             step_id="control", data_schema=probatio.Schema(schema_dict)
         )

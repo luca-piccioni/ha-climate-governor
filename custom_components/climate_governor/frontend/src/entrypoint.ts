@@ -3,6 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { sharedStyles } from "./styles";
 import {
   deleteSubentry,
+  fetchDiagnostics,
   fetchHistory,
   fetchOverview,
   navigate,
@@ -11,9 +12,12 @@ import {
   selectOption,
   setNumber,
   setSwitch,
+  updateOptions,
   type HistoryPoint,
 } from "./api";
 import type {
+  Bounds,
+  DiagnosticsPayload,
   Hass,
   OverviewPayload,
   PanelRouter,
@@ -49,6 +53,18 @@ export class ClimateGovernorPanel extends LitElement {
   @state() private _error: string | null = null;
   // entity_id -> recent history points, for the zone-detail sparkline.
   @state() private _history: Record<string, HistoryPoint[]> = {};
+  // Lazily fetched on the diagnostics view.
+  @state() private _diagnostics: DiagnosticsPayload | null = null;
+  @state() private _diagLoading = false;
+  // Edit buffers for the presets / tuning forms. Kept local so a Save commits
+  // one options update (and one reload) instead of one per keystroke. Reset on
+  // navigation and after a successful save so the next entry re-reads fresh data.
+  @state() private _presetEdits: Record<string, { heat: number; cool: number }> | null =
+    null;
+  @state() private _defaultPresetEdit: string | null = null;
+  @state() private _tuningEdits: Record<string, number> | null = null;
+  @state() private _saving = false;
+  @state() private _saved = false;
 
   private _timer?: number;
 
@@ -78,6 +94,12 @@ export class ClimateGovernorPanel extends LitElement {
   }
 
   private _sub(path: string): void {
+    // Leaving a form view: drop any uncommitted edits so the next entry
+    // re-reads from freshly fetched data.
+    this._presetEdits = null;
+    this._defaultPresetEdit = null;
+    this._tuningEdits = null;
+    this._saved = false;
     navigate(this.hass, path);
   }
 
@@ -124,6 +146,13 @@ export class ClimateGovernorPanel extends LitElement {
       view = this._renderZones(data);
     } else if (path.startsWith("/periods")) {
       view = this._renderPeriods(data);
+    } else if (path.startsWith("/presets")) {
+      view = this._renderPresets(data);
+    } else if (path.startsWith("/tuning")) {
+      view = this._renderTuning(data);
+    } else if (path.startsWith("/diagnostics")) {
+      this._maybeFetchDiagnostics();
+      view = this._renderDiagnostics();
     } else {
       view = this._renderOverview(data);
     }
@@ -178,6 +207,8 @@ export class ClimateGovernorPanel extends LitElement {
     };
     return html`<nav class="tabs">
       ${tab("/", "Overview")}${tab("/zones", "Zones")}${tab("/periods", "Schedule")}
+      ${tab("/presets", "Presets")}${tab("/tuning", "Tuning")}
+      ${tab("/diagnostics", "Diagnostics")}
     </nav>`;
   }
 
@@ -672,6 +703,396 @@ export class ClimateGovernorPanel extends LitElement {
     } catch {
       return iso;
     }
+  }
+
+  // ---- Shared form helpers ------------------------------------------------
+
+  // A labeled number input bound to a bounds tuple; commits to a local buffer
+  // on change (blur/enter), never per keystroke. The Save button persists.
+  private _numInput(
+    value: number | undefined,
+    bounds: Bounds | undefined,
+    onCommit: (v: number) => void,
+  ) {
+    const min = bounds?.[0];
+    const max = bounds?.[1];
+    const step = bounds?.[2];
+    return html`<input
+      type="number"
+      .value=${value != null ? String(value) : ""}
+      min=${min ?? ""}
+      max=${max ?? ""}
+      step=${step ?? "any"}
+      @change=${(ev: Event) => {
+        const raw = Number((ev.target as HTMLInputElement).value);
+        if (Number.isFinite(raw)) onCommit(raw);
+      }}
+    />`;
+  }
+
+  private _saveNote() {
+    if (this._saving) return html`<span class="muted">Saving…</span>`;
+    if (this._saved) return html`<span class="muted">Saved.</span>`;
+    return nothing;
+  }
+
+  // ---- Presets (heat/cool setpoint matrix) --------------------------------
+
+  private _presetKeys(data: OverviewPayload): string[] {
+    return data.preset_keys ?? Object.keys(data.presets ?? {});
+  }
+
+  private _currentPresetEdits(
+    data: OverviewPayload,
+    keys: string[],
+  ): Record<string, { heat: number; cool: number }> {
+    if (this._presetEdits) return this._presetEdits;
+    const out: Record<string, { heat: number; cool: number }> = {};
+    for (const k of keys) {
+      const p = data.presets?.[k] ?? {};
+      out[k] = { heat: p.heat ?? 0, cool: p.cool ?? 0 };
+    }
+    return out;
+  }
+
+  private _renderPresets(data: OverviewPayload) {
+    const keys = this._presetKeys(data);
+    const edits = this._currentPresetEdits(data, keys);
+    const limits = data.limits;
+    const presetOptions = Object.keys(data.presets ?? {});
+    const currentDefault = this._defaultPresetEdit ?? data.default_preset ?? "";
+
+    return html`
+      <h2>Presets</h2>
+      <p class="muted">
+        Setpoints per preset. Heat is used when heating, cool when cooling.
+        Values are saved together.
+      </p>
+      <div class="card section" style="cursor:default; overflow-x:auto">
+        <table class="matrix">
+          <thead>
+            <tr>
+              <th>Preset</th>
+              <th>Heat <span class="muted">(°C)</span></th>
+              <th>Cool <span class="muted">(°C)</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${keys.map(
+              (k) => html`<tr>
+                <td>
+                  <span class="chip ${k === currentDefault ? "on" : ""}">${k}</span>
+                </td>
+                <td>
+                  ${this._numInput(edits[k]?.heat, limits?.preset_heat, (v) => {
+                    this._presetEdits = {
+                      ...edits,
+                      [k]: { ...edits[k], heat: v },
+                    };
+                    this._saved = false;
+                  })}
+                </td>
+                <td>
+                  ${this._numInput(edits[k]?.cool, limits?.preset_cool, (v) => {
+                    this._presetEdits = {
+                      ...edits,
+                      [k]: { ...edits[k], cool: v },
+                    };
+                    this._saved = false;
+                  })}
+                </td>
+              </tr>`,
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card section" style="cursor:default">
+        <div class="controls">
+          ${this._select(
+            "Default preset",
+            currentDefault,
+            presetOptions.length ? presetOptions : keys,
+            (opt) => {
+              this._defaultPresetEdit = opt;
+              this._saved = false;
+            },
+          )}
+        </div>
+      </div>
+
+      <div class="actions">
+        <button
+          ?disabled=${this._saving}
+          @click=${() => void this._savePresets(data, keys)}
+        >
+          <ha-icon icon="mdi:content-save"></ha-icon> Save presets
+        </button>
+        ${this._saveNote()}
+      </div>
+    `;
+  }
+
+  private async _savePresets(data: OverviewPayload, keys: string[]) {
+    const edits = this._currentPresetEdits(data, keys);
+    const presets: Record<string, { heat: number; cool: number }> = {};
+    for (const k of keys) presets[k] = edits[k];
+    this._saving = true;
+    this._saved = false;
+    try {
+      await updateOptions(this.hass, data.entry!.entry_id, {
+        presets,
+        default_preset: this._defaultPresetEdit ?? data.default_preset,
+      });
+      this._presetEdits = null;
+      this._defaultPresetEdit = null;
+      this._saved = true;
+      await this._load();
+    } catch (err) {
+      window.alert(`Save failed: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      this._saving = false;
+    }
+  }
+
+  // ---- Tuning (season, master switches, global control defaults) ----------
+
+  private _renderTuning(data: OverviewPayload) {
+    const gw = data.gateway_entities ?? {};
+    const seasonState = gw.season ? this.hass.states[gw.season] : undefined;
+    const season = seasonState?.state ?? data.season ?? "";
+    const seasonOptions =
+      (seasonState?.attributes?.options as string[]) ??
+      data.season_options ??
+      ["heating", "shoulder", "cooling"];
+
+    const heatState = gw.master_heat ? this.hass.states[gw.master_heat] : undefined;
+    const coolState = gw.master_cool ? this.hass.states[gw.master_cool] : undefined;
+
+    const limits = data.limits?.tuning ?? {};
+    const tuning = this._tuningEdits ?? data.tuning ?? {};
+    const labels: Record<string, string> = {
+      tolerance: "Tolerance",
+      kp: "Kp (proportional)",
+      ki: "Ki (integral)",
+      max_offset: "Max offset",
+      cycle_window: "Cycle window (s)",
+    };
+
+    return html`
+      <h2>Tuning</h2>
+
+      <div class="card section" style="cursor:default">
+        <div class="card-title">Season &amp; master switches</div>
+        <div class="controls">
+          ${gw.season
+            ? this._select("Season", season, seasonOptions, (opt) =>
+                void selectOption(this.hass, gw.season, opt),
+              )
+            : nothing}
+          ${gw.master_heat
+            ? this._toggle(
+                "Master heating",
+                heatState?.state === "on",
+                (on) => void setSwitch(this.hass, gw.master_heat, on),
+              )
+            : nothing}
+          ${gw.master_cool
+            ? this._toggle(
+                "Master cooling",
+                coolState?.state === "on",
+                (on) => void setSwitch(this.hass, gw.master_cool, on),
+              )
+            : nothing}
+        </div>
+        <p class="muted" style="margin-top:10px">
+          The season scales gains, tolerance and outdoor reset. Master switches
+          enable or disable the whole heating / cooling path.
+        </p>
+      </div>
+
+      <div class="card section" style="cursor:default">
+        <div class="card-title">Global control defaults</div>
+        <p class="muted">
+          Defaults for every zone. A zone can override these on its own page.
+        </p>
+        <div class="controls">
+          ${Object.keys(labels).map(
+            (key) => html`<div class="control">
+              <label>${labels[key]}</label>
+              ${this._numInput(tuning[key], limits[key], (v) => {
+                this._tuningEdits = { ...(this._tuningEdits ?? tuning), [key]: v };
+                this._saved = false;
+              })}
+            </div>`,
+          )}
+        </div>
+        <div class="actions" style="margin-top:14px">
+          <button
+            ?disabled=${this._saving}
+            @click=${() => void this._saveTuning(data)}
+          >
+            <ha-icon icon="mdi:content-save"></ha-icon> Save defaults
+          </button>
+          ${this._saveNote()}
+        </div>
+      </div>
+    `;
+  }
+
+  private async _saveTuning(data: OverviewPayload) {
+    const tuning = this._tuningEdits ?? data.tuning ?? {};
+    this._saving = true;
+    this._saved = false;
+    try {
+      await updateOptions(this.hass, data.entry!.entry_id, { tuning });
+      this._tuningEdits = null;
+      this._saved = true;
+      await this._load();
+    } catch (err) {
+      window.alert(`Save failed: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      this._saving = false;
+    }
+  }
+
+  // ---- Diagnostics --------------------------------------------------------
+
+  private _maybeFetchDiagnostics(): void {
+    if (this._diagnostics || this._diagLoading) return;
+    this._diagLoading = true;
+    void fetchDiagnostics(this.hass)
+      .then((d) => {
+        this._diagnostics = d;
+      })
+      .catch(() => {
+        this._diagnostics = { diagnostics: null, issues: [] };
+      })
+      .finally(() => {
+        this._diagLoading = false;
+      });
+  }
+
+  private _renderDiagnostics() {
+    if (this._diagLoading && !this._diagnostics) {
+      return html`<h2>Diagnostics</h2><p class="muted">Loading…</p>`;
+    }
+    const d = this._diagnostics;
+    if (!d) return html`<h2>Diagnostics</h2><p class="muted">No data.</p>`;
+
+    const issues = d.issues ?? [];
+    const diag = d.diagnostics as
+      | {
+          config?: Record<string, unknown>;
+          options?: Record<string, unknown>;
+          outdoor_temp?: number | null;
+          master_heat?: boolean;
+          master_cool?: boolean;
+          zones?: Record<string, Record<string, unknown>>;
+        }
+      | null;
+
+    return html`
+      <h2>Diagnostics</h2>
+      <div class="actions">
+        <button
+          class="secondary"
+          @click=${() => {
+            this._diagnostics = null;
+            this._maybeFetchDiagnostics();
+          }}
+        >
+          <ha-icon icon="mdi:refresh"></ha-icon> Refresh
+        </button>
+      </div>
+
+      <div class="section">
+        <h2>Issues</h2>
+        ${issues.length === 0
+          ? html`<p class="empty">No open issues. 🎉</p>`
+          : html`<div class="grid">
+              ${issues.map(
+                (i) => html`<div class="card" style="cursor:default">
+                  <div class="card-title">
+                    <ha-icon
+                      icon=${i.severity === "error"
+                        ? "mdi:alert-octagon"
+                        : "mdi:alert"}
+                    ></ha-icon>
+                    ${i.translation_key ?? i.issue_id}
+                  </div>
+                  <div class="chips">
+                    <span class="chip ${i.severity === "error" ? "off" : "warn"}">
+                      ${i.severity ?? "issue"}
+                    </span>
+                    ${Object.entries(i.translation_placeholders ?? {}).map(
+                      ([k, v]) => html`<span class="chip">${k}: ${String(v)}</span>`,
+                    )}
+                  </div>
+                </div>`,
+              )}
+            </div>`}
+      </div>
+
+      ${diag
+        ? html`
+            <div class="card section" style="cursor:default">
+              <div class="card-title">System</div>
+              <dl class="kv">
+                <dt>Name</dt>
+                <dd>${String(diag.config?.name ?? "—")}</dd>
+                <dt>Outdoor source</dt>
+                <dd>${String(diag.config?.outdoor_entity_id ?? "—")}</dd>
+                <dt>Outdoor temp</dt>
+                <dd>${diag.outdoor_temp ?? "—"}</dd>
+                <dt>Design temp</dt>
+                <dd>${String(diag.config?.outdoor_design_temp ?? "—")}</dd>
+                <dt>Season</dt>
+                <dd>${String(diag.options?.season ?? "—")}</dd>
+                <dt>Master heat / cool</dt>
+                <dd>${diag.master_heat ? "on" : "off"} / ${diag.master_cool ? "on" : "off"}</dd>
+              </dl>
+            </div>
+
+            <div class="section">
+              <h2>Zones</h2>
+              <div class="grid">
+                ${Object.entries(diag.zones ?? {}).map(([id, z]) => {
+                  const st = (z.state ?? {}) as Record<string, unknown>;
+                  const acts = (z.actuators ?? []) as {
+                    entity_id: string;
+                    kind: string;
+                    role: string;
+                    capabilities?: string;
+                  }[];
+                  return html`<div class="card" style="cursor:default">
+                    <div class="card-title">${String(z.name ?? id)}</div>
+                    <div class="stat-row">
+                      ${this._stat("Action", String(st.action ?? "—"))}
+                      ${this._stat(
+                        "Duty",
+                        st.duty_cycle != null ? `${st.duty_cycle}%` : "—",
+                      )}
+                      ${this._stat("Integral", String(st.integral ?? "—"))}
+                    </div>
+                    <div class="chips">
+                      ${acts.map(
+                        (a) =>
+                          html`<span class="chip">${a.entity_id} (${a.role}/${a.kind})</span>`,
+                      )}
+                    </div>
+                  </div>`;
+                })}
+              </div>
+            </div>
+
+            <details class="section">
+              <summary class="muted">Raw diagnostics JSON</summary>
+              <pre class="json">${JSON.stringify(diag, null, 2)}</pre>
+            </details>
+          `
+        : html`<p class="empty">Entry not loaded — no live diagnostics.</p>`}
+    `;
   }
 }
 

@@ -1,4 +1,4 @@
-import type { Hass, OverviewPayload } from "./types";
+import type { DiagnosticsPayload, Hass, OverviewPayload } from "./types";
 
 export const DOMAIN = "climate_governor";
 
@@ -6,6 +6,35 @@ export async function fetchOverview(hass: Hass): Promise<OverviewPayload> {
   return (await hass.connection.sendMessagePromise({
     type: "climate_governor/overview",
   })) as OverviewPayload;
+}
+
+// Preset setpoints / default preset / season / control defaults live in
+// entry.options. Core's config_entries/update does not accept options and the
+// options flow is REST-only, so we use the integration's own command, which
+// mirrors the flow (async_update_entry + reload). One source of truth.
+export async function updateOptions(
+  hass: Hass,
+  entryId: string,
+  updates: {
+    presets?: Record<string, { heat?: number; cool?: number }>;
+    default_preset?: string;
+    season?: string;
+    tuning?: Record<string, number>;
+  },
+): Promise<void> {
+  await hass.connection.sendMessagePromise({
+    type: "climate_governor/update_options",
+    entry_id: entryId,
+    ...updates,
+  });
+}
+
+export async function fetchDiagnostics(
+  hass: Hass,
+): Promise<DiagnosticsPayload> {
+  return (await hass.connection.sendMessagePromise({
+    type: "climate_governor/diagnostics",
+  })) as DiagnosticsPayload;
 }
 
 export async function deleteSubentry(

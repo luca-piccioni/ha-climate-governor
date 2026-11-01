@@ -193,7 +193,7 @@ Static assets: `custom_components/climate_governor/frontend/dist/` served at
 | **P0** | the manifest/area/label fixes above | done |
 | **P1** | panel shell + sidebar + overview + zone list, read-only, delegating add/edit to core flows | **done** |
 | **P2** | zone detail page (live gauges, history, tuning inline via CONFIG entities), periods week grid | **done** |
-| **P3** | presets matrix + season/tuning with native numeric fields; diagnostics view | 1–2 days |
+| **P3** | presets matrix + season/tuning with native numeric fields; diagnostics view | **done** |
 | **P4** | `climate_governor/overview` WS command, tests (`test_panel.py`), HACS packaging | 1 day |
 
 Ship P1 first: it already replaces the "sparse helpers" feeling with one
@@ -268,3 +268,33 @@ Verified live in the browser: overview, zone detail, all controls render;
 toggling Boost flipped the switch and drove the controller (Target→23°,
 Preset→boost) end-to-end, then back off. `postCreateCommand` now installs Node
 LTS via nvm and builds the panel on container create.
+
+## 11. P3 status — BUILT (2026-11-01)
+
+Three new tabs: **Presets**, **Tuning**, **Diagnostics**.
+
+- **Presets**: heat/cool setpoint matrix + default-preset select. Edits buffer
+  locally and commit one `climate_governor/update_options` call (one reload),
+  not one per keystroke.
+- **Tuning**: season select + master heat/cool toggles (these are gateway
+  CONFIG entities → `select.select_option` / `switch.turn_on/off`, no new
+  command), plus global control defaults (tolerance/kp/ki/max_offset/
+  cycle_window) via `update_options`.
+- **Diagnostics**: open repair issues + system summary + per-zone live state +
+  collapsible raw JSON. Backed by `climate_governor/diagnostics`, which reuses
+  the integration's own `async_get_config_entry_diagnostics` and filters
+  `issue_registry` to `domain==DOMAIN`.
+
+Backend: `climate_governor/update_options` (mirrors the options flow —
+`async_update_entry` with merged options; clamps to shared bounds; the existing
+update listener reloads). Core's `config_entries/update` does **not** accept
+`options` and the options flow is REST-only, so this command is the panel's
+write path. Numeric bounds moved to `const.py` (`TUNING_BOUNDS`,
+`PRESET_*_BOUNDS`) as the single source of truth shared by the flow and panel
+(`config_flow.py` now builds its schemas from them). The overview returns
+**effective** (parsed + defaulted) presets/season/default/tuning, not raw
+`entry.options`, so the forms show real values when options are unset.
+
+Verified live: presets comfort heat 21→22→21 and tuning Kp 40→50→40 persisted
+to `.storage/core.config_entries` end-to-end; diagnostics shows Sala (heating,
+86.7% duty, switch.valve) and "No open issues". Full suite 83 green (5 new).

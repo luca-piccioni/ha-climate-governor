@@ -408,4 +408,57 @@ export const sharedStyles = css`
     padding: 2px 6px;
     font-size: 0.72rem;
   }
+
+  /* Presets matrix + diagnostics ---------------------------------------- */
+  table.matrix {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+
+  table.matrix th,
+  table.matrix td {
+    border-bottom: 1px solid var(--divider-color);
+    padding: 8px;
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  table.matrix th {
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--secondary-text-color);
+  }
+
+  table.matrix input[type="number"] {
+    font: inherit;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--divider-color);
+    background: var(--card-background-color);
+    color: var(--primary-text-color);
+    width: 110px;
+  }
+
+  details {
+    background: var(--card-background-color);
+    border-radius: 12px;
+    padding: 12px 16px;
+  }
+
+  details summary {
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+
+  pre.json {
+    margin: 12px 0 0;
+    font-size: 0.75rem;
+    font-family: var(--code-monospace-font, monospace);
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--primary-text-color);
+  }
 `;

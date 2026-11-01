@@ -21,35 +21,51 @@ from typing import Any
 import probatio
 from homeassistant.components import panel_custom, websocket_api
 from homeassistant.components.http import StaticPathConfig
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import floor_registry as fr
+from homeassistant.helpers import issue_registry as ir
 
 from .const import (
     CONF_ACTUATOR_ENTITY_ID,
     CONF_ACTUATOR_KIND,
     CONF_ACTUATOR_ROLE,
     CONF_AREA_ID,
+    CONF_CYCLE_WINDOW,
     CONF_DAYS,
     CONF_DEFAULT_PRESET,
     CONF_FLOOR_ID,
     CONF_FROM_TIME,
     CONF_HUMIDITY_SENSOR,
+    CONF_KI,
+    CONF_KP,
     CONF_MASTER_COOL,
     CONF_MASTER_HEAT,
+    CONF_MAX_OFFSET,
     CONF_OUTDOOR_ENTITY_ID,
     CONF_PRESET,
     CONF_PRESETS,
     CONF_SEASON,
     CONF_TEMPERATURE_SENSORS,
     CONF_TO_TIME,
+    CONF_TOLERANCE,
+    DEFAULT_PRESETS,
     DOMAIN,
+    PRESET_COOL_BOUNDS,
+    PRESET_COOL_KEY,
+    PRESET_HEAT_BOUNDS,
+    PRESET_HEAT_KEY,
+    SEASON_COOLING,
+    SEASON_HEATING,
+    SEASON_SHOULDER,
     SUBENTRY_TYPE_PERIOD,
     SUBENTRY_TYPE_ZONE,
+    TUNING_BOUNDS,
 )
 from .coordinator import GovernorCoordinator
+from .diagnostics import async_get_config_entry_diagnostics
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -110,6 +126,8 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
         return
 
     websocket_api.async_register_command(hass, overview_command)
+    websocket_api.async_register_command(hass, update_options_command)
+    websocket_api.async_register_command(hass, diagnostics_command)
 
     dist = await hass.async_add_executor_job(_scan_dist)
     if dist is None:
@@ -265,11 +283,33 @@ async def overview_command(
         "floors": [
             {"floor_id": f.floor_id, "name": f.name} for f in floors.floors.values()
         ],
+        # Static metadata so the panel renders inputs with the same bounds the
+        # options flow enforces (single source of truth in const.py).
+        "preset_keys": list(DEFAULT_PRESETS),
+        "limits": {
+            "preset_heat": list(PRESET_HEAT_BOUNDS),
+            "preset_cool": list(PRESET_COOL_BOUNDS),
+            "tuning": {k: list(v) for k, v in TUNING_BOUNDS.items()},
+        },
+        "season_options": [SEASON_HEATING, SEASON_SHOULDER, SEASON_COOLING],
         "zones": [],
         "periods": [],
     }
 
     if coordinator is not None:
+        opts = coordinator.options
+        # Effective (parsed + defaulted) values, so the panel shows the real
+        # setpoints/season even when entry.options omits unset keys.
+        payload["presets"] = opts.presets
+        payload["default_preset"] = opts.default_preset
+        payload["season"] = opts.season
+        payload["tuning"] = {
+            CONF_TOLERANCE: opts.tolerance,
+            CONF_KP: opts.kp,
+            CONF_KI: opts.ki,
+            CONF_MAX_OFFSET: opts.max_offset,
+            CONF_CYCLE_WINDOW: opts.cycle_window,
+        }
         payload["master_heat"] = coordinator.master_heat
         payload["master_cool"] = coordinator.master_cool
         payload["temperature_unit"] = coordinator.temperature_unit
@@ -328,3 +368,112 @@ async def overview_command(
                 )
 
     connection.send_result(msg["id"], payload)
+
+
+def _clamp(value: Any, bounds: tuple[float, float, float, str | None]) -> float:
+    """Coerce to float and clamp to a ``(min, max, step, unit)`` bound."""
+    lo, hi, _step, _unit = bounds
+    return max(lo, min(hi, float(value)))
+
+
+@websocket_api.websocket_command(
+    {
+        probatio.Required("type"): "climate_governor/update_options",
+        probatio.Required("entry_id"): str,
+        probatio.Optional("presets"): dict,
+        probatio.Optional("default_preset"): str,
+        probatio.Optional("season"): str,
+        probatio.Optional("tuning"): dict,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def update_options_command(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Write preset setpoints / default preset / season / control defaults.
+
+    Mirrors what the core options flow does (``async_update_entry`` with merged
+    options), so the panel and the flow share one source of truth. Values are
+    clamped to the same bounds the flow enforces. The existing update listener
+    reloads the entry, so the coordinator picks the new options up.
+    """
+    entry = hass.config_entries.async_get_entry(msg["entry_id"])
+    if entry is None or entry.domain != DOMAIN:
+        connection.send_error(
+            msg["id"], websocket_api.ERR_NOT_FOUND, "Config entry not found"
+        )
+        return
+
+    updates: dict[str, Any] = {}
+
+    if "presets" in msg and isinstance(msg["presets"], dict):
+        current = dict(entry.options.get(CONF_PRESETS) or DEFAULT_PRESETS)
+        for preset, vals in msg["presets"].items():
+            if preset not in DEFAULT_PRESETS or not isinstance(vals, dict):
+                continue
+            merged = dict(current.get(preset, {}))
+            heat = vals.get(PRESET_HEAT_KEY)
+            cool = vals.get(PRESET_COOL_KEY)
+            if heat is not None:
+                merged[PRESET_HEAT_KEY] = _clamp(heat, PRESET_HEAT_BOUNDS)
+            if cool is not None:
+                merged[PRESET_COOL_KEY] = _clamp(cool, PRESET_COOL_BOUNDS)
+            current[preset] = merged
+        updates[CONF_PRESETS] = current
+
+    if isinstance(msg.get(CONF_DEFAULT_PRESET), str) and msg[CONF_DEFAULT_PRESET]:
+        updates[CONF_DEFAULT_PRESET] = msg[CONF_DEFAULT_PRESET]
+
+    if msg.get(CONF_SEASON) in (SEASON_HEATING, SEASON_SHOULDER, SEASON_COOLING):
+        updates[CONF_SEASON] = msg[CONF_SEASON]
+
+    if "tuning" in msg and isinstance(msg["tuning"], dict):
+        for key, bounds in TUNING_BOUNDS.items():
+            if msg["tuning"].get(key) is not None:
+                val = _clamp(msg["tuning"][key], bounds)
+                updates[key] = int(val) if key == CONF_CYCLE_WINDOW else val
+
+    if updates:
+        hass.config_entries.async_update_entry(
+            entry, options=entry.options | updates
+        )
+
+    connection.send_result(msg["id"], {"options": dict(entry.options)})
+
+
+@websocket_api.websocket_command(
+    {probatio.Required("type"): "climate_governor/diagnostics"}
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def diagnostics_command(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict
+) -> None:
+    """Return the config-entry diagnostics plus any open repair issues.
+
+    Reuses the integration's own ``async_get_config_entry_diagnostics`` so the
+    panel shows exactly what the diagnostics download shows — no parallel model.
+    """
+    entry = next(iter(hass.config_entries.async_entries(DOMAIN)), None)
+    if entry is None:
+        connection.send_result(msg["id"], {"diagnostics": None, "issues": []})
+        return
+
+    issues = [
+        {
+            "issue_id": issue.issue_id,
+            "translation_key": issue.translation_key,
+            "severity": issue.severity,
+            "is_fixable": issue.is_fixable,
+            "translation_placeholders": issue.translation_placeholders,
+        }
+        for issue in ir.async_get(hass).issues.values()
+        if issue.active and issue.domain == DOMAIN
+    ]
+
+    diagnostics: dict[str, Any] | None = None
+    if entry.state is ConfigEntryState.LOADED:
+        diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    connection.send_result(msg["id"], {"diagnostics": diagnostics, "issues": issues})
