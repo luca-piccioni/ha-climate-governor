@@ -1,0 +1,388 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Climate Governor",
+        "description": "Configure the system-wide settings for this heating/cooling plant. Zones and schedules are added as sub-entries.",
+        "data": {
+          "name": "Name",
+          "outdoor_entity_id": "Outdoor temperature source (sensor or weather entity)",
+          "outdoor_design_temp": "Design outdoor temperature (coldest expected, used for outdoor reset)"
+        }
+      },
+      "zone": {
+        "title": "Add the first zone",
+        "description": "Add the first thermal zone. You can add more zones and time periods later from the integration page.",
+        "data": {
+          "zone_name": "Zone name",
+          "area_id": "Area",
+          "floor_id": "Floor",
+          "temperature_sensors": "Temperature sensors (one or more)",
+          "humidity_sensor": "Humidity sensor (optional, phase 2)",
+          "heat_switch": "Motorized valve (switch)",
+          "heat_climate": "Heating climate actuator",
+          "cool_climate": "Cooling climate actuator",
+          "aggregation": "Sensor aggregation"
+        },
+        "data_description": {
+          "heat_switch": "A switch entity driving a motorized valve; controlled by duty-cycle.",
+          "heat_climate": "A climate entity used as a heating cascade (setpoint shift).",
+          "cool_climate": "A climate entity used as a cooling cascade (setpoint shift)."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced control tuning",
+            "description": "Per-zone overrides of the control law. Leave empty to use the global defaults.",
+            "data": {
+              "tolerance": "Deadband tolerance",
+              "kp": "Proportional gain (Kp)",
+              "ki": "Integral gain (Ki)",
+              "max_offset": "Max cascade setpoint offset",
+              "cycle_window": "Duty-cycle window"
+            }
+          }
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Climate Governor",
+        "description": "Edit the system-wide settings.",
+        "data": {
+          "name": "[%key:component::climate_governor::config::step::user::data::name%]",
+          "outdoor_entity_id": "[%key:component::climate_governor::config::step::user::data::outdoor_entity_id%]",
+          "outdoor_design_temp": "[%key:component::climate_governor::config::step::user::data::outdoor_design_temp%]"
+        }
+      }
+    },
+    "error": {
+      "no_sensors": "Select at least one temperature sensor.",
+      "no_actuator": "Select at least one actuator (a valve switch or a climate entity)."
+    },
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_service%]",
+      "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]",
+      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]"
+    }
+  },
+  "config_subentries": {
+    "zone": {
+      "entry_type": "Zone",
+      "initiate_flow": {
+        "user": "Add zone",
+        "reconfigure": "Edit zone"
+      },
+      "step": {
+        "user": {
+          "title": "Add zone",
+          "description": "[%key:component::climate_governor::config::step::zone::description%]",
+          "data": {
+            "zone_name": "[%key:component::climate_governor::config::step::zone::data::zone_name%]",
+            "area_id": "[%key:component::climate_governor::config::step::zone::data::area_id%]",
+            "floor_id": "[%key:component::climate_governor::config::step::zone::data::floor_id%]",
+            "temperature_sensors": "[%key:component::climate_governor::config::step::zone::data::temperature_sensors%]",
+            "humidity_sensor": "[%key:component::climate_governor::config::step::zone::data::humidity_sensor%]",
+            "heat_switch": "[%key:component::climate_governor::config::step::zone::data::heat_switch%]",
+            "heat_climate": "[%key:component::climate_governor::config::step::zone::data::heat_climate%]",
+            "cool_climate": "[%key:component::climate_governor::config::step::zone::data::cool_climate%]",
+            "aggregation": "[%key:component::climate_governor::config::step::zone::data::aggregation%]"
+          },
+          "data_description": {
+            "heat_switch": "[%key:component::climate_governor::config::step::zone::data_description::heat_switch%]",
+            "heat_climate": "[%key:component::climate_governor::config::step::zone::data_description::heat_climate%]",
+            "cool_climate": "[%key:component::climate_governor::config::step::zone::data_description::cool_climate%]"
+          },
+          "sections": {
+            "advanced": {
+              "name": "[%key:component::climate_governor::config::step::zone::sections::advanced::name%]",
+              "description": "[%key:component::climate_governor::config::step::zone::sections::advanced::description%]",
+              "data": {
+                "tolerance": "[%key:component::climate_governor::config::step::zone::sections::advanced::data::tolerance%]",
+                "kp": "[%key:component::climate_governor::config::step::zone::sections::advanced::data::kp%]",
+                "ki": "[%key:component::climate_governor::config::step::zone::sections::advanced::data::ki%]",
+                "max_offset": "[%key:component::climate_governor::config::step::zone::sections::advanced::data::max_offset%]",
+                "cycle_window": "[%key:component::climate_governor::config::step::zone::sections::advanced::data::cycle_window%]"
+              }
+            }
+          }
+        },
+        "reconfigure": {
+          "title": "Reconfigure zone",
+          "data": {
+            "zone_name": "[%key:component::climate_governor::config::step::zone::data::zone_name%]",
+            "area_id": "[%key:component::climate_governor::config::step::zone::data::area_id%]",
+            "floor_id": "[%key:component::climate_governor::config::step::zone::data::floor_id%]",
+            "temperature_sensors": "[%key:component::climate_governor::config::step::zone::data::temperature_sensors%]",
+            "humidity_sensor": "[%key:component::climate_governor::config::step::zone::data::humidity_sensor%]",
+            "heat_switch": "[%key:component::climate_governor::config::step::zone::data::heat_switch%]",
+            "heat_climate": "[%key:component::climate_governor::config::step::zone::data::heat_climate%]",
+            "cool_climate": "[%key:component::climate_governor::config::step::zone::data::cool_climate%]",
+            "aggregation": "[%key:component::climate_governor::config::step::zone::data::aggregation%]"
+          },
+          "sections": {
+            "advanced": {
+              "name": "[%key:component::climate_governor::config::step::zone::sections::advanced::name%]",
+              "description": "[%key:component::climate_governor::config::step::zone::sections::advanced::description%]",
+              "data": {
+                "tolerance": "[%key:component::climate_governor::config::step::zone::sections::advanced::data::tolerance%]",
+                "kp": "[%key:component::climate_governor::config::step::zone::sections::advanced::data::kp%]",
+                "ki": "[%key:component::climate_governor::config::step::zone::sections::advanced::data::ki%]",
+                "max_offset": "[%key:component::climate_governor::config::step::zone::sections::advanced::data::max_offset%]",
+                "cycle_window": "[%key:component::climate_governor::config::step::zone::sections::advanced::data::cycle_window%]"
+              }
+            }
+          }
+        }
+      },
+      "error": {
+        "no_sensors": "[%key:component::climate_governor::config::error::no_sensors%]",
+        "no_actuator": "[%key:component::climate_governor::config::error::no_actuator%]"
+      },
+      "abort": {
+        "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]"
+      }
+    },
+    "period": {
+      "entry_type": "Schedule period",
+      "initiate_flow": {
+        "user": "Add schedule period",
+        "reconfigure": "Edit schedule period"
+      },
+      "step": {
+        "user": {
+          "title": "Add schedule period",
+          "description": "Define a weekly time range that applies a preset to one or more zones.",
+          "data": {
+            "zones": "Zones",
+            "days": "Days",
+            "from_time": "Start time",
+            "to_time": "End time",
+            "preset": "Preset"
+          },
+          "data_description": {
+            "to_time": "Set an end time earlier than the start time to cross midnight."
+          }
+        },
+        "reconfigure": {
+          "title": "Reconfigure schedule period",
+          "data": {
+            "zones": "[%key:component::climate_governor::config_subentries::period::step::user::data::zones%]",
+            "days": "[%key:component::climate_governor::config_subentries::period::step::user::data::days%]",
+            "from_time": "[%key:component::climate_governor::config_subentries::period::step::user::data::from_time%]",
+            "to_time": "[%key:component::climate_governor::config_subentries::period::step::user::data::to_time%]",
+            "preset": "[%key:component::climate_governor::config_subentries::period::step::user::data::preset%]"
+          }
+        }
+      },
+      "error": {
+        "no_zones": "Select at least one zone.",
+        "no_days": "Select at least one day."
+      },
+      "abort": {
+        "no_zones": "Add at least one zone before adding a schedule period.",
+        "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "menu_options": {
+          "presets": "Edit preset setpoints",
+          "control": "Edit control defaults",
+          "season": "Select season"
+        }
+      },
+      "presets": {
+        "title": "Preset setpoints",
+        "description": "Heat and cool setpoints for each preset. Leave a field empty to keep it unchanged.",
+        "data": {
+          "eco_heat": "Eco heat",
+          "eco_cool": "Eco cool",
+          "comfort_heat": "Comfort heat",
+          "comfort_cool": "Comfort cool",
+          "boost_heat": "Boost heat",
+          "boost_cool": "Boost cool",
+          "away_heat": "Away heat",
+          "away_cool": "Away cool",
+          "sleep_heat": "Sleep heat",
+          "sleep_cool": "Sleep cool",
+          "default_preset": "Default preset (when no schedule matches)"
+        }
+      },
+      "control": {
+        "title": "Control defaults",
+        "description": "Global defaults for the deadband + duty-cycle PI controller.",
+        "data": {
+          "tolerance": "Deadband tolerance",
+          "kp": "Proportional gain (Kp)",
+          "ki": "Integral gain (Ki)",
+          "max_offset": "Max cascade setpoint offset",
+          "cycle_window": "Duty-cycle window"
+        }
+      },
+      "season": {
+        "title": "Season",
+        "description": "The season scales gains, tolerance and the outdoor-reset slope.",
+        "data": {
+          "season": "Season"
+        }
+      }
+    },
+    "abort": {
+      "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]"
+    }
+  },
+  "issues": {
+    "no_outdoor_source": {
+      "title": "No outdoor temperature source",
+      "description": "Climate Governor has no usable outdoor temperature source. The outdoor-reset bias is disabled until you configure a sensor or weather entity in the integration settings."
+    },
+    "actuator_capability_mismatch": {
+      "title": "Actuator capability mismatch",
+      "description": "One or more actuators in zone {zone} do not expose any usable capability (no target temperature, no heat/cool mode, no on/off). Check the entity: {entities}."
+    },
+    "zone_no_actuator": {
+      "title": "Zone has no actuator",
+      "description": "Zone {zone} has no actuator configured, so it cannot be governed. Edit the zone sub-entry and add a valve switch or a climate entity."
+    }
+  },
+  "exceptions": {
+    "no_zone_configured": {
+      "message": "Climate Governor needs at least one zone sub-entry. Add one from the integration page."
+    }
+  },
+  "selector": {
+    "aggregation": {
+      "options": {
+        "mean": "Mean",
+        "median": "Median",
+        "min": "Minimum",
+        "max": "Maximum"
+      }
+    },
+    "day": {
+      "options": {
+        "mon": "Monday",
+        "tue": "Tuesday",
+        "wed": "Wednesday",
+        "thu": "Thursday",
+        "fri": "Friday",
+        "sat": "Saturday",
+        "sun": "Sunday"
+      }
+    },
+    "preset": {
+      "options": {
+        "eco": "Eco",
+        "comfort": "Comfort",
+        "boost": "Boost",
+        "away": "Away",
+        "sleep": "Sleep"
+      }
+    },
+    "season": {
+      "options": {
+        "heating": "Heating",
+        "shoulder": "Shoulder",
+        "cooling": "Cooling"
+      }
+    }
+  },
+  "entity": {
+    "climate": {
+      "zone": {
+        "name": " "
+      }
+    },
+    "number": {
+      "tolerance": {
+        "name": "Deadband tolerance"
+      },
+      "kp": {
+        "name": "Proportional gain (Kp)"
+      },
+      "ki": {
+        "name": "Integral gain (Ki)"
+      },
+      "setpoint_offset": {
+        "name": "Setpoint offset"
+      }
+    },
+    "select": {
+      "season": {
+        "name": "Season"
+      },
+      "preset_hold": {
+        "name": "Preset hold",
+        "state": {
+          "schedule": "Follow schedule"
+        }
+      }
+    },
+    "switch": {
+      "zone_enable": {
+        "name": "Enabled"
+      },
+      "boost": {
+        "name": "Boost"
+      },
+      "master_heat": {
+        "name": "Master heating"
+      },
+      "master_cool": {
+        "name": "Master cooling"
+      }
+    },
+    "sensor": {
+      "outdoor_temperature": {
+        "name": "Outdoor temperature"
+      },
+      "duty_cycle": {
+        "name": "Duty cycle"
+      },
+      "control_output": {
+        "name": "Control output"
+      },
+      "integral": {
+        "name": "Integral"
+      },
+      "next_schedule_change": {
+        "name": "Next schedule change"
+      },
+      "actuator_capabilities": {
+        "name": "Actuator capabilities"
+      }
+    },
+    "binary_sensor": {
+      "actuator_active": {
+        "name": "Actuator active"
+      },
+      "blocked": {
+        "name": "Blocked"
+      },
+      "in_comfort": {
+        "name": "In comfort band"
+      }
+    },
+    "button": {
+      "reset_integral": {
+        "name": "Reset integral"
+      }
+    }
+  },
+  "services": {
+    "reset_integral": {
+      "name": "Reset integral",
+      "description": "Clears the accumulated integral term of a zone controller."
+    },
+    "set_hold": {
+      "name": "Set preset hold",
+      "description": "Holds a preset for a zone until the schedule takes over again.",
+      "fields": {
+        "preset": {
+          "name": "Preset",
+          "description": "The preset to hold."
+        }
+      }
+    }
+  }
+}

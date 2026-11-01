@@ -1,0 +1,25 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# --- Home Assistant runtime state (generated at runtime, never commit) ---
+.storage/
+.HA_VERSION
+.ha_run.lock
+home-assistant.log*
+home-assistant_v2.db*
+.cache/
+.cloud/
+tts/
+deps/
+
+# --- OS / editor noise ---
+.DS_Store
+Thumbs.db

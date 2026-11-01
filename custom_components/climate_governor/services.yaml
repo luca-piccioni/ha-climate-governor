@@ -1,0 +1,15 @@
+reset_integral:
+  target:
+    entity:
+      integration: climate_governor
+      domain: climate
+set_hold:
+  target:
+    entity:
+      integration: climate_governor
+      domain: climate
+  fields:
+    preset:
+      required: true
+      selector:
+        text:

@@ -1,0 +1,30 @@
+{
+  "name": "Home Assistant Climate Governor",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "runArgs": ["--network=host"],
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": "uv python install 3.14 && uv venv --python 3.14 .venv && uv pip install --python .venv/bin/python -r requirements_dev.txt",
+  "remoteEnv": {
+    "PATH": "/workspace/.venv/bin:${containerEnv:PATH}"
+  },
+  "portsAttributes": {
+    "8123": { "onAutoForward": "ignore" },
+    "8124": { "onAutoForward": "ignore" },
+    "8125": { "onAutoForward": "ignore" },
+    "8126": {
+      "label": "Home Assistant",
+      "onAutoForward": "ignore"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ]
+    }
+  }
+}

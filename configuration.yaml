@@ -1,0 +1,67 @@
+default_config:
+
+# WSL2 mirrored-mode networking makes any port that Windows is already
+# listening on unbindable inside the container (EADDRINUSE, with no socket
+# visible in `ss`/`/proc/net/tcp`). VS Code's port-forward proxies were holding
+# 8123-8125, so HA uses 8126. With --network=host + mirrored mode, Windows
+# reaches WSL ports directly - no VS Code forwarding needed.
+http:
+  server_port: 8126
+
+logger:
+  default: warning
+  logs:
+    custom_components.climate_governor: debug
+
+# ---------------------------------------------------------------------------
+# Dev fixtures for the Climate Governor manual UI run (plan verification 3-4).
+# These give the config flow something to pick and let you force a duty cycle:
+#   - lower input_number.living_temp below the setpoint -> switch.valve turns on
+#   - input_number.outdoor_temp feeds the outdoor-reset bias
+# The template switch mirrors input_boolean.valve so you can watch the governor
+# drive it (and flip it by hand if you like).
+# ---------------------------------------------------------------------------
+input_number:
+  living_temp:
+    name: Living temperature
+    min: 10
+    max: 30
+    step: 0.1
+    unit_of_measurement: "°C"
+    initial: 19
+  outdoor_temp:
+    name: Outdoor temperature
+    min: -20
+    max: 40
+    step: 0.5
+    unit_of_measurement: "°C"
+    initial: 3
+
+input_boolean:
+  valve:
+    name: Valve
+
+template:
+  - sensor:
+      - name: Living temp
+        unique_id: dev_living_temp
+        unit_of_measurement: "°C"
+        state_class: measurement
+        state: "{{ states('input_number.living_temp') }}"
+      - name: Outdoor
+        unique_id: dev_outdoor
+        unit_of_measurement: "°C"
+        state_class: measurement
+        state: "{{ states('input_number.outdoor_temp') }}"
+  - switch:
+      - name: Valve
+        unique_id: dev_valve
+        state: "{{ is_state('input_boolean.valve', 'on') }}"
+        turn_on:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.valve
+        turn_off:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.valve

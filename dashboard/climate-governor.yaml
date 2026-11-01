@@ -1,0 +1,98 @@
+# Climate Governor — starter dashboard (no custom card required).
+#
+# Install (either way):
+#   1. Storage dashboard: create a new dashboard in the UI, take control, and
+#      paste the `views:` below; or
+#   2. YAML dashboard: copy this file to your config dir as
+#      `climate-governor.yaml` and add to configuration.yaml:
+#
+#        lovelace:
+#          dashboards:
+#            climate-governor:
+#              mode: yaml
+#              title: Climate Governor
+#              icon: mdi:thermostat
+#              show_in_sidebar: true
+#              filename: climate-governor.yaml
+#
+# Entity ids are derived from the *zone name* and the *entry name* you chose in
+# the config flow. The example below uses a zone named "Living" and an entry
+# named "Climate Governor". Duplicate the "Zone: Living" grid section for every
+# zone subentry you add, replacing `living` with the zone slug.
+#
+# Tuning entities (EntityCategory.CONFIG) and diagnostics (DIAGNOSTIC) are
+# hidden from auto-generated dashboards, so they are listed explicitly here.
+
+views:
+  - title: Climate Governor
+    type: sections
+    max_columns: 3
+    sections:
+      # ------------------------------------------------------------------ zone
+      - type: grid
+        title: "Zone: Living"
+        cards:
+          # One thermostat card per zone (works with the built-in card).
+          - type: thermostat
+            entity: climate.living
+
+          # Duty cycle gauge (scheduled ON fraction of the cycle window).
+          - type: gauge
+            entity: sensor.living_duty_cycle
+            min: 0
+            max: 100
+            name: Duty cycle
+
+          # Live control output (PI output, 0-100%).
+          - type: gauge
+            entity: sensor.living_control_output
+            min: 0
+            max: 100
+            name: Control output
+
+          # Temperature vs target history.
+          - type: history-graph
+            entities:
+              - climate.living
+              - sensor.living_control_output
+            hours_to_show: 24
+            name: Living (24 h)
+
+          # Status / diagnostics (hidden by default -> listed explicitly).
+          - type: entities
+            title: Status
+            show_header_toggle: false
+            entities:
+              - binary_sensor.living_actuator_active
+              - binary_sensor.living_in_comfort_band
+              - binary_sensor.living_blocked
+              - sensor.living_next_schedule_change
+              - sensor.living_integral
+              - sensor.living_actuator_capabilities
+
+          # User tuning controls (EntityCategory.CONFIG).
+          - type: entities
+            title: Tuning
+            show_header_toggle: false
+            entities:
+              - switch.living_enabled
+              - switch.living_boost
+              - select.living_preset_hold
+              - number.living_setpoint_offset
+              - number.living_deadband_tolerance
+              - number.living_proportional_gain_kp
+              - number.living_integral_gain_ki
+              - button.living_reset_integral
+
+      # -------------------------------------------------------------- system
+      - type: grid
+        title: System
+        cards:
+          - type: entities
+            title: Master controls
+            show_header_toggle: false
+            entities:
+              - switch.climate_governor_master_heating
+              - switch.climate_governor_master_cooling
+              - select.climate_governor_season
+              - sensor.climate_governor_outdoor_temperature

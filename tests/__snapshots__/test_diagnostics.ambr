@@ -1,0 +1,96 @@
+# serializer version: 1
+# name: test_diagnostics_snapshot
+  dict({
+    'config': dict({
+      'name': 'Test Plant',
+      'outdoor_design_temp': -7.0,
+      'outdoor_entity_id': 'sensor.outdoor',
+      'stale_after': 3600,
+    }),
+    'master_cool': True,
+    'master_heat': True,
+    'options': dict({
+      'cycle_window': 900.0,
+      'default_preset': 'comfort',
+      'ki': 8.0,
+      'kp': 40.0,
+      'presets': dict({
+        'away': dict({
+          'cool': 30.0,
+          'heat': 16.0,
+        }),
+        'boost': dict({
+          'cool': 24.0,
+          'heat': 23.0,
+        }),
+        'comfort': dict({
+          'cool': 25.5,
+          'heat': 21.0,
+        }),
+        'eco': dict({
+          'cool': 28.0,
+          'heat': 18.0,
+        }),
+        'sleep': dict({
+          'cool': 27.0,
+          'heat': 18.5,
+        }),
+      }),
+      'season': 'heating',
+      'tolerance': 0.3,
+    }),
+    'outdoor_temp': 3.0,
+    'subentries': dict({
+      'period': list([
+        dict({
+          'subentry_id': 'period-morning',
+          'title': 'Weekdays 06:30-08:30 comfort',
+        }),
+      ]),
+      'zone': list([
+        dict({
+          'subentry_id': 'zone-living',
+          'title': 'Living',
+        }),
+      ]),
+    }),
+    'zones': dict({
+      'zone-living': dict({
+        'actuators': list([
+          dict({
+            'capabilities': 'mode-only',
+            'entity_id': 'switch.valve',
+            'kind': 'switch',
+            'role': 'heat',
+          }),
+        ]),
+        'name': 'Living',
+        'state': dict({
+          'action': 'heating',
+          'blocked': False,
+          'current_temp': 19.0,
+          'duty_cycle': 86.7,
+          'effective_preset': 'comfort',
+          'hvac_mode': 'heat',
+          'in_comfort': False,
+          'integral': 0.0,
+          'output_cool': 0.0,
+          'output_heat': 96.0,
+          'schedule_preset': 'comfort',
+          'target_temp_high': 25.5,
+          'target_temp_low': 21.0,
+        }),
+        'temperature_sensors': list([
+          'sensor.living_temp',
+        ]),
+        'user_config': dict({
+          'boost': False,
+          'enabled': True,
+          'hvac_mode': 'heat_cool',
+          'preset_hold': None,
+          'setpoint_offset': 0.0,
+        }),
+      }),
+    }),
+  })
+# ---
