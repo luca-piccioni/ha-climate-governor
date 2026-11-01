@@ -192,7 +192,7 @@ Static assets: `custom_components/climate_governor/frontend/dist/` served at
 | --- | --- | --- |
 | **P0** | the manifest/area/label fixes above | done |
 | **P1** | panel shell + sidebar + overview + zone list, read-only, delegating add/edit to core flows | **done** |
-| **P2** | zone detail page (live gauges, history, tuning inline via CONFIG entities), periods week grid | 1–2 days |
+| **P2** | zone detail page (live gauges, history, tuning inline via CONFIG entities), periods week grid | **done** |
 | **P3** | presets matrix + season/tuning with native numeric fields; diagnostics view | 1–2 days |
 | **P4** | `climate_governor/overview` WS command, tests (`test_panel.py`), HACS packaging | 1 day |
 
@@ -247,3 +247,24 @@ overview payload shape, no-entry path. Full suite 78 green.
 
 Deferred to P2+: zone detail inline tuning (CONFIG entities), presets matrix,
 season/tuning native fields, diagnostics view, history graphs.
+
+## 10. P2 status — BUILT (2026-11-01)
+
+Zone detail gained **inline controls** that write through the CONFIG-category
+entities (no parallel API): enable/boost toggles (`switch.turn_on/off`), preset
+hold select (`select.select_option`, options from the entity's `options`
+attribute), tolerance/kp/ki/setpoint-offset number inputs (min/max/step read
+from the number entity's capability attributes), reset-integral button, and a
+"Release hold" action. A 24h **duty-cycle sparkline** is drawn from
+`history/history_during_period`. Schedule view adds a 7-column **week grid**
+above the period table.
+
+Backend: entity map now resolves `zone_enable` (unique_id suffix `-enable`, not
+`-zone_enable` — fixed) and `reset_integral`. `hass`/`narrow`/`route`/`panel`
+made reactive (`@property({state:true})`) so live state changes and navigation
+re-render (plain fields would only update on the 30s poll).
+
+Verified live in the browser: overview, zone detail, all controls render;
+toggling Boost flipped the switch and drove the controller (Target→23°,
+Preset→boost) end-to-end, then back off. `postCreateCommand` now installs Node
+LTS via nvm and builds the panel on container create.

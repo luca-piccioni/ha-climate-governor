@@ -69,6 +69,11 @@ async def test_overview_command(
     assert zone["state"]["current_temp"] == 19.0
     assert zone["entities"]["climate"] == "climate.living"
     assert zone["entities"]["duty_cycle"] == "sensor.living_duty_cycle"
+    # CONFIG-category entities used by the panel's inline controls. The
+    # zone_enable switch's unique_id suffix is "-enable" (not "-zone_enable").
+    assert zone["entities"]["zone_enable"] == "switch.living_enabled"
+    assert zone["entities"]["reset_integral"] == "button.living_reset_integral"
+    assert zone["entities"]["preset_hold"] == "select.living_preset_hold"
 
     assert payload["gateway_entities"]["outdoor_temperature"] == (
         "sensor.test_plant_outdoor_temperature"

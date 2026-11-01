@@ -277,4 +277,135 @@ export const sharedStyles = css`
     height: 100%;
     background: var(--primary-color);
   }
+
+  /* Inline controls ------------------------------------------------------- */
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+  }
+
+  .control {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .control label {
+    font-size: 0.75rem;
+    color: var(--secondary-text-color);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .control input[type="number"] {
+    font: inherit;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--divider-color);
+    background: var(--card-background-color);
+    color: var(--primary-text-color);
+    width: 100%;
+  }
+
+  .control select {
+    font: inherit;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--divider-color);
+    background: var(--card-background-color);
+    color: var(--primary-text-color);
+    width: 100%;
+  }
+
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .toggle .track {
+    width: 42px;
+    height: 24px;
+    border-radius: 999px;
+    background: var(--secondary-background-color);
+    position: relative;
+    transition: background 0.15s ease;
+    flex: none;
+  }
+
+  .toggle .track::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.15s ease;
+  }
+
+  .toggle.on .track {
+    background: var(--primary-color);
+  }
+
+  .toggle.on .track::after {
+    transform: translateX(18px);
+  }
+
+  .spark {
+    width: 100%;
+    height: 80px;
+    display: block;
+    margin-top: 8px;
+  }
+
+  .spark polyline {
+    fill: none;
+    stroke: var(--primary-color);
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .spark .band {
+    fill: rgba(var(--accent-color-rgb, 255, 160, 0), 0.12);
+  }
+
+  .weekgrid {
+    display: grid;
+    grid-template-columns: 64px repeat(7, 1fr);
+    gap: 1px;
+    background: var(--divider-color);
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 0.8rem;
+  }
+
+  .weekgrid > div {
+    background: var(--card-background-color);
+    padding: 6px;
+    min-height: 34px;
+  }
+
+  .weekgrid .head {
+    background: var(--secondary-background-color);
+    font-weight: 600;
+    text-align: center;
+  }
+
+  .weekgrid .cell {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .weekgrid .cell .p {
+    background: var(--secondary-background-color);
+    border-radius: 6px;
+    padding: 2px 6px;
+    font-size: 0.72rem;
+  }
 `;

@@ -1,13 +1,25 @@
-import { LitElement, html, nothing, type PropertyValues } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { LitElement, html, nothing } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import { sharedStyles } from "./styles";
 import {
   deleteSubentry,
+  fetchHistory,
   fetchOverview,
   navigate,
   openCoreEntryPage,
+  pressButton,
+  selectOption,
+  setNumber,
+  setSwitch,
+  type HistoryPoint,
 } from "./api";
-import type { Hass, OverviewPayload, PanelRouter, ZoneInfo } from "./types";
+import type {
+  Hass,
+  OverviewPayload,
+  PanelRouter,
+  PeriodInfo,
+  ZoneInfo,
+} from "./types";
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -24,14 +36,19 @@ const HVAC_ACTION_ICON: Record<string, string> = {
 
 @customElement("climate-governor-panel")
 export class ClimateGovernorPanel extends LitElement {
-  public hass!: Hass;
-  public narrow = false;
-  public route!: PanelRouter;
-  public panel!: { url_path: string };
+  // Reactive (state:true, no attribute reflection): HA assigns a fresh `hass`
+  // object on every state change and a new `route` on navigation, so these
+  // must be reactive for the panel to update live and switch views.
+  @property({ state: true }) hass!: Hass;
+  @property({ state: true }) narrow = false;
+  @property({ state: true }) route!: PanelRouter;
+  @property({ state: true }) panel!: { url_path: string };
 
   @state() private _data: OverviewPayload | null = null;
   @state() private _loading = true;
   @state() private _error: string | null = null;
+  // entity_id -> recent history points, for the zone-detail sparkline.
+  @state() private _history: Record<string, HistoryPoint[]> = {};
 
   private _timer?: number;
 
@@ -47,14 +64,6 @@ export class ClimateGovernorPanel extends LitElement {
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     if (this._timer) window.clearInterval(this._timer);
-  }
-
-  protected override updated(changed: PropertyValues): void {
-    // Re-render on hass identity change (states) — handled by Lit reactive
-    // props. When the route changes, Lit re-renders via the route property.
-    if (changed.has("route")) {
-      this.requestUpdate();
-    }
   }
 
   private async _load(): Promise<void> {
@@ -105,7 +114,12 @@ export class ClimateGovernorPanel extends LitElement {
     if (path.startsWith("/zones/")) {
       const id = decodeURIComponent(path.slice("/zones/".length));
       const zone = data.zones.find((z) => z.subentry_id === id);
-      view = zone ? this._renderZoneDetail(zone, data) : this._renderZones(data);
+      if (zone) {
+        this._maybeFetchHistory(zone);
+        view = this._renderZoneDetail(zone, data);
+      } else {
+        view = this._renderZones(data);
+      }
     } else if (path.startsWith("/zones")) {
       view = this._renderZones(data);
     } else if (path.startsWith("/periods")) {
@@ -115,6 +129,20 @@ export class ClimateGovernorPanel extends LitElement {
     }
 
     return html`${this._header(data.entry.title)}${this._tabs(path)}<main>${view}</main>`;
+  }
+
+  // Fetch 24h history for the zone's climate + duty-cycle once per entity.
+  // Fire-and-forget; the reactive _history map re-renders the sparkline.
+  private _maybeFetchHistory(zone: ZoneInfo): void {
+    const ids = [zone.entities.climate, zone.entities.duty_cycle].filter(
+      (id): id is string => Boolean(id) && !(id in this._history),
+    );
+    for (const id of ids) {
+      this._history[id] = []; // mark in-flight so we don't refetch each render
+      void fetchHistory(this.hass, id).then((pts) => {
+        this._history = { ...this._history, [id]: pts };
+      });
+    }
   }
 
   private _header(title: string) {
@@ -330,7 +358,10 @@ export class ClimateGovernorPanel extends LitElement {
                 st.next_change ? this._fmtTime(st.next_change) : "—",
               )}
             </div>
-          </div>`
+            ${this._sparkline(z)}
+          </div>
+
+          ${this._renderControls(z)}`
         : html`<p class="empty">This zone is not loaded (no live state).</p>`}
 
       <div class="card section" style="cursor:default">
@@ -371,14 +402,188 @@ export class ClimateGovernorPanel extends LitElement {
     }
   }
 
+  // ---- Inline controls (write via CONFIG entities) ------------------------
+
+  private _renderControls(z: ZoneInfo) {
+    const e = z.entities;
+    const enableState = e.zone_enable ? this.hass.states[e.zone_enable] : undefined;
+    const boostState = e.boost ? this.hass.states[e.boost] : undefined;
+    const holdState = e.preset_hold ? this.hass.states[e.preset_hold] : undefined;
+
+    return html`<div class="card section" style="cursor:default">
+      <div class="card-title">Controls</div>
+      <div class="controls">
+        ${e.zone_enable
+          ? this._toggle(
+              "Enabled",
+              enableState?.state === "on",
+              (on) => void setSwitch(this.hass, e.zone_enable, on),
+            )
+          : nothing}
+        ${e.boost
+          ? this._toggle(
+              "Boost",
+              boostState?.state === "on",
+              (on) => void setSwitch(this.hass, e.boost, on),
+            )
+          : nothing}
+        ${e.preset_hold
+          ? this._select(
+              "Preset hold",
+              holdState?.state ?? "schedule",
+              (holdState?.attributes?.options as string[]) ??
+                Object.keys(this._data?.presets ?? {}),
+              (opt) => void selectOption(this.hass, e.preset_hold, opt),
+            )
+          : nothing}
+        ${e.tolerance
+          ? this._number(
+              "Tolerance",
+              e.tolerance,
+              (v) => void setNumber(this.hass, e.tolerance, v),
+            )
+          : nothing}
+        ${e.kp
+          ? this._number("Kp", e.kp, (v) => void setNumber(this.hass, e.kp, v))
+          : nothing}
+        ${e.ki
+          ? this._number("Ki", e.ki, (v) => void setNumber(this.hass, e.ki, v))
+          : nothing}
+        ${e.setpoint_offset
+          ? this._number(
+              "Offset",
+              e.setpoint_offset,
+              (v) => void setNumber(this.hass, e.setpoint_offset, v),
+            )
+          : nothing}
+      </div>
+      <div class="actions" style="margin-top:14px">
+        ${e.reset_integral
+          ? html`<button
+              class="secondary"
+              @click=${() => void pressButton(this.hass, e.reset_integral)}
+            >
+              <ha-icon icon="mdi:restore"></ha-icon> Reset integral
+            </button>`
+          : nothing}
+        ${e.preset_hold && holdState?.state && holdState.state !== "schedule"
+          ? html`<button
+              class="secondary"
+              @click=${() => void selectOption(this.hass, e.preset_hold, "schedule")}
+            >
+              <ha-icon icon="mdi:calendar-clock"></ha-icon> Release hold
+            </button>`
+          : nothing}
+      </div>
+    </div>`;
+  }
+
+  private _toggle(
+    label: string,
+    on: boolean,
+    onChange: (on: boolean) => void,
+  ) {
+    return html`<div class="control">
+      <label>${label}</label>
+      <span
+        class=${`toggle ${on ? "on" : ""}`}
+        role="switch"
+        aria-checked=${on ? "true" : "false"}
+        tabindex="0"
+        @click=${() => onChange(!on)}
+        @keydown=${(ev: KeyboardEvent) => {
+          if (ev.key === "Enter" || ev.key === " ") {
+            ev.preventDefault();
+            onChange(!on);
+          }
+        }}
+      >
+        <span class="track"></span>
+        <span>${on ? "On" : "Off"}</span>
+      </span>
+    </div>`;
+  }
+
+  private _number(
+    label: string,
+    entity_id: string,
+    onCommit: (v: number) => void,
+  ) {
+    const st = this.hass.states[entity_id];
+    if (!st) return nothing;
+    const attrs = st.attributes as { min?: number; max?: number; step?: number };
+    const value = Number(st.state);
+    return html`<div class="control">
+      <label>${label}</label>
+      <input
+        type="number"
+        .value=${String(Number.isFinite(value) ? value : "")}
+        min=${attrs.min ?? ""}
+        max=${attrs.max ?? ""}
+        step=${attrs.step ?? "any"}
+        @change=${(ev: Event) => {
+          const v = Number((ev.target as HTMLInputElement).value);
+          if (Number.isFinite(v)) onCommit(v);
+        }}
+      />
+    </div>`;
+  }
+
+  private _select(
+    label: string,
+    current: string,
+    options: string[],
+    onCommit: (v: string) => void,
+  ) {
+    return html`<div class="control">
+      <label>${label}</label>
+      <select
+        @change=${(ev: Event) =>
+          onCommit((ev.target as HTMLSelectElement).value)}
+      >
+        ${options.map(
+          (o) =>
+            html`<option value=${o} ?selected=${o === current}>${o}</option>`,
+        )}
+      </select>
+    </div>`;
+  }
+
+  // ---- Sparkline ----------------------------------------------------------
+
+  private _sparkline(z: ZoneInfo) {
+    const pts = this._history[z.entities.duty_cycle] ?? [];
+    if (pts.length < 2) return nothing;
+    const w = 300;
+    const h = 60;
+    const t0 = pts[0].t;
+    const t1 = pts[pts.length - 1].t || t0 + 1;
+    const vs = pts.map((p) => p.v);
+    const vMin = Math.min(...vs, 0);
+    const vMax = Math.max(...vs, 1);
+    const span = vMax - vMin || 1;
+    const poly = pts
+      .map(
+        (p) =>
+          `${(((p.t - t0) / (t1 - t0)) * w).toFixed(1)},${(
+            h -
+            ((p.v - vMin) / span) * h
+          ).toFixed(1)}`,
+      )
+      .join(" ");
+    return html`<div class="control" style="margin-top:10px">
+      <label>Duty cycle · 24h</label>
+      <svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+        <polyline points=${poly} />
+      </svg>
+    </div>`;
+  }
+
   // ---- Periods (week grid) ------------------------------------------------
 
   private _renderPeriods(data: OverviewPayload) {
     const zoneName = (id: string) =>
       data.zones.find((z) => z.subentry_id === id)?.name ?? id;
-    const rows = [...data.periods].sort((a, b) =>
-      (a.from_time ?? "").localeCompare(b.from_time ?? ""),
-    );
     return html`
       <h2>Schedule</h2>
       <div class="actions">
@@ -386,30 +591,62 @@ export class ClimateGovernorPanel extends LitElement {
           <ha-icon icon="mdi:plus"></ha-icon> Add period
         </button>
       </div>
-      ${rows.length === 0
+      ${data.periods.length === 0
         ? html`<p class="empty">No schedule periods yet.</p>`
-        : html`<div class="card" style="cursor:default; overflow-x:auto">
-            <table class="week">
-              <thead>
-                <tr>
-                  <th>Period</th><th>Time</th><th>Preset</th><th>Zones</th>
-                  <th>Days</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rows.map(
-                  (p) => html`<tr>
-                    <td>${p.title}</td>
-                    <td>${p.from_time ?? "?"}–${p.to_time ?? "?"}</td>
-                    <td><span class="chip">${p.preset}</span></td>
-                    <td>${p.zones.map(zoneName).join(", ")}</td>
-                    <td>${this._dayChips(p.days)}</td>
-                  </tr>`,
-                )}
-              </tbody>
-            </table>
-          </div>`}
+        : html`
+            ${this._weekGrid(data.periods)}
+            <div class="card section" style="cursor:default; overflow-x:auto">
+              <table class="week">
+                <thead>
+                  <tr>
+                    <th>Period</th><th>Time</th><th>Preset</th><th>Zones</th>
+                    <th>Days</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${[...data.periods]
+                    .sort((a, b) =>
+                      (a.from_time ?? "").localeCompare(b.from_time ?? ""),
+                    )
+                    .map(
+                      (p) => html`<tr>
+                        <td>${p.title}</td>
+                        <td>${p.from_time ?? "?"}–${p.to_time ?? "?"}</td>
+                        <td><span class="chip">${p.preset}</span></td>
+                        <td>${p.zones.map(zoneName).join(", ")}</td>
+                        <td>${this._dayChips(p.days)}</td>
+                      </tr>`,
+                    )}
+                </tbody>
+              </table>
+            </div>
+          `}
     `;
+  }
+
+  // A 7-column week grid; each period appears in the cells for its days.
+  // Time is shown inside the chip (rows would need real time-bucketing, which
+  // the schedule model does not fix — periods are arbitrary ranges).
+  private _weekGrid(periods: PeriodInfo[]) {
+    return html`<div class="weekgrid">
+      <div class="head"></div>
+      ${DAY_NAMES.map((d) => html`<div class="head">${d}</div>`)}
+      <div class="head">All</div>
+      ${DAY_NAMES.map((_, day) => {
+        const onDay = periods.filter((p) => p.days.includes(day));
+        return html`<div class="cell">
+          ${onDay.length === 0
+            ? html`<span class="muted">—</span>`
+            : onDay.map(
+                (p) =>
+                  html`<span class="p"
+                    >${p.from_time?.slice(0, 5)}–${p.to_time?.slice(0, 5)}
+                    ${p.preset}</span
+                  >`,
+              )}
+        </div>`;
+      })}
+    </div>`;
   }
 
   private _dayChips(days: number[]) {

@@ -6,7 +6,7 @@
   "runArgs": ["--network=host"],
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
   "workspaceFolder": "/workspace",
-  "postCreateCommand": "uv python install 3.14 && uv venv --python 3.14 .venv && uv pip install --python .venv/bin/python -r requirements_dev.txt",
+  "postCreateCommand": "uv python install 3.14 && uv venv --python 3.14 .venv && uv pip install --python .venv/bin/python -r requirements_dev.txt && bash -lc 'source /usr/local/share/nvm/nvm.sh && nvm install --lts && nvm alias default lts/*' && npm --prefix custom_components/climate_governor/frontend install && npm --prefix custom_components/climate_governor/frontend run build",
   "remoteEnv": {
     "PATH": "/workspace/.venv/bin:${containerEnv:PATH}"
   },

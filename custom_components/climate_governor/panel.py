@@ -75,8 +75,9 @@ _ZONE_ENTITY_KEYS = {
     "ki": "ki",
     "setpoint_offset": "setpoint_offset",
     "preset_hold": "preset_hold",
-    "zone_enable": "zone_enable",
+    "zone_enable": "enable",
     "boost": "boost",
+    "reset_integral": "reset_integral",
 }
 _GATEWAY_ENTITY_KEYS = {
     "outdoor_temperature": "outdoor-temp",
@@ -134,16 +135,7 @@ async def async_setup_panel(hass: HomeAssistant) -> None:
         require_admin=True,
     )
     hass.data.setdefault(DOMAIN, {})["panel_registered"] = True
-
-
-def _get_coordinator(hass: HomeAssistant) -> GovernorCoordinator | None:
-    """Return the single entry's coordinator, if the entry is loaded."""
-    for entry in hass.config_entries.async_entries(DOMAIN):
-        if entry.state.recoverable and (
-            coordinator := getattr(entry, "runtime_data", None)
-        ):
-            return coordinator
-    return None
+    _LOGGER.debug("Climate Governor panel registered: %s/%s", URL_BASE, entrypoint)
 
 
 def _entity_map(
