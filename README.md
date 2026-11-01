@@ -9,6 +9,33 @@ classic PID is hard to tune.
 There is **no custom card and no JavaScript build**: the whole UI is built from
 standard Home Assistant entities plus a shipped Lovelace dashboard.
 
+## Installation
+
+[![Add this repository to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/luca-piccioni/ha-climate-governor/?category=integration)
+
+### Marketplace / HACS (recommended)
+
+This repository is not (yet) in the default catalog, so add it as a **custom repository**:
+
+- **Home Assistant 2026.11 or newer** (Marketplace is built in): go to
+  **Settings → Marketplace → Add from link**, enter
+  `luca-piccioni/ha-climate-governor`, then install it.
+- **Home Assistant 2026.10 or older** (HACS): in HACS, open the **⋮** menu →
+  **Custom repositories** → add `https://github.com/luca-piccioni/ha-climate-governor`
+  with type **Integration**, then install it.
+
+After installing, restart Home Assistant if prompted, then add the integration
+under **Settings → Devices & services → Add Integration → Climate Governor**.
+Updates are tracked with an update entity.
+
+### Manual
+
+1. Copy `custom_components/climate_governor/` (the whole folder) into the
+   `custom_components/` folder of your Home Assistant configuration directory
+   (create it if it does not exist).
+2. Restart Home Assistant.
+3. Add the integration under **Settings → Devices & services**.
+
 ## How it works
 
 - **One config entry** (the "plant") with **config subentries**: one per *zone*
@@ -122,3 +149,8 @@ container.
 4. Lower `input_number.living_temp` below the setpoint and watch
    `switch.valve` turn on for `u/100 * W` seconds and then off; `sensor.living_duty_cycle`
    tracks the scheduled fraction.
+
+## License
+
+Released under the [MIT license](LICENSE). The placeholder icon in `brand/`
+is mine and may be replaced freely.
