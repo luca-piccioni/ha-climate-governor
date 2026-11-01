@@ -16,6 +16,7 @@ from .const import (
     SUBENTRY_TYPE_ZONE,
 )
 from .coordinator import ClimateGovernorConfigEntry, GovernorCoordinator
+from .panel import async_setup_panel
 from .repairs import async_setup_repairs
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -24,6 +25,7 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Climate Governor integration."""
     async_setup_repairs(hass)
+    await async_setup_panel(hass)
     return True
 
 

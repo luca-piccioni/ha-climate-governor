@@ -23,3 +23,8 @@ deps/
 # --- OS / editor noise ---
 .DS_Store
 Thumbs.db
+
+# --- Frontend (panel) build ---
+# node_modules is not committed; dist/ IS committed so installing the
+# integration needs no JS toolchain (see plan-climateGovernor-panel.md §5).
+custom_components/climate_governor/frontend/node_modules/

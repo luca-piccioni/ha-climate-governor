@@ -191,7 +191,7 @@ Static assets: `custom_components/climate_governor/frontend/dist/` served at
 | phase | deliverable | effort |
 | --- | --- | --- |
 | **P0** | the manifest/area/label fixes above | done |
-| **P1** | panel shell + sidebar + overview + zone list, read-only, delegating add/edit to core flows | 1–2 days |
+| **P1** | panel shell + sidebar + overview + zone list, read-only, delegating add/edit to core flows | **done** |
 | **P2** | zone detail page (live gauges, history, tuning inline via CONFIG entities), periods week grid | 1–2 days |
 | **P3** | presets matrix + season/tuning with native numeric fields; diagnostics view | 1–2 days |
 | **P4** | `climate_governor/overview` WS command, tests (`test_panel.py`), HACS packaging | 1 day |
@@ -216,12 +216,34 @@ navigable surface, and everything after is additive.
 
 ---
 
-## 8. Decisions to confirm
+## 8. Decisions (confirmed, P1 built)
 
-1. **Delegate flows (A) or native forms (B)?** A is 3–5× cheaper and can't drift.
-   Recommend A for zone/period, B only for tuning/presets.
-2. **Commit `dist/`** to the repo (no toolchain at install) — recommended.
-3. **Panel replaces the shipped YAML dashboard, or coexist?** Recommend coexist:
-   panel = configuration, dashboard = live control.
-4. **Add the `climate_governor/overview` WS command in P1 or defer to P4?**
-   P1 if the overview feels slow without it.
+1. **Delegate flows (A)** — chosen. Add/edit zone/period and "Configure" route to
+   core's integration page (`/config/integrations/integration/<domain>#config_entry=<id>`),
+   which owns the subentry flow. Native forms deferred to P3 (tuning/presets).
+2. **Commit `dist/`** — chosen. `frontend/dist/entrypoint-<hash>.js` is committed;
+   `node_modules/` is gitignored. Install needs no JS toolchain.
+3. **Coexist with the shipped dashboard** — chosen. Panel = configuration,
+   dashboard = live control.
+4. **`climate_governor/overview` WS command in P1** — chosen. One round-trip
+   returns entry + subentries + live zone state + entity map + areas/floors.
+
+## 9. P1 status — BUILT (2026-11-01)
+
+Backend `panel.py`: registers the panel once per HA run (guarded in `hass.data`),
+serves `frontend/dist` at `/climate_governor_static` with a content-hashed
+filename, and exposes `climate_governor/overview`. The dist scan runs in an
+executor (HA 2026.10 flags blocking `glob`/`scandir` in the loop). `manifest.json`
+gains `dependencies: [http, websocket_api]` and `after_dependencies: [panel_custom]`.
+
+Frontend `frontend/` (Lit + TS + esbuild, no decorators): `climate-governor-panel`
+element with Overview / Zones / Schedule tabs, internal routing via
+`history.pushState` + `location-changed`, live values re-rendered from
+`hass.states`, add/edit delegated to core, delete via
+`config_entries/subentries/delete`. Build: `npm run build` → hashed bundle.
+
+Tests: `tests/test_panel.py` (4) — panel registered, idempotent on reload,
+overview payload shape, no-entry path. Full suite 78 green.
+
+Deferred to P2+: zone detail inline tuning (CONFIG entities), presets matrix,
+season/tuning native fields, diagnostics view, history graphs.
